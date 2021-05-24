@@ -7,12 +7,12 @@ class Scenario(BaseScenario):
         world = World()
         
         self.direction_alpha = args.direction_alpha
-        self.add_direction_encoder = args.add_direction_encoder
-         
+        self.add_direction_encoder:str = args.add_direction_encoder
+        assert self.add_direction_encoder in ['train','keyboard','disable']
+        world.data_slot['key_direction'] = 0
         #for simulate real world
         world.step_t = args.step_t
         world.sim_step = args.sim_step
-        world.sim_t = world.step_t/world.sim_step
         world.field_range = [-2.4,-2.4,2.4,2.4]
 
         # define the task 
@@ -118,7 +118,7 @@ class Scenario(BaseScenario):
 
         world.real_landmark = np.random.randint(len(world.landmarks))
         real_landmark = world.landmarks[world.real_landmark]
-        onehot = np.eye(4)
+        
         def encode_direction(direction):
             if direction[0] > 0 and direction[1] > 0:
                 return 0
@@ -128,11 +128,12 @@ class Scenario(BaseScenario):
                 return 2
             if direction[0] > 0 and direction[1] < 0:
                 return 3
-        
+
+        world.data_slot['direction_decoder'] = [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]
         for agent in world.vehicles:
             direction = [real_landmark.state.coordinate[0] - agent.state.coordinate[0],
                          real_landmark.state.coordinate[1] - agent.state.coordinate[1]]
-            agent.data_slot['direction_encoder'] = onehot[encode_direction(direction),:]
+            agent.data_slot['direction_code'] = world.data_slot['direction_decoder'][encode_direction(direction)]
                         
     def reward(self, agent:Vehicle, world:World):
                 # Adversaries are rewarded for collisions with agents
@@ -206,11 +207,16 @@ class Scenario(BaseScenario):
         for other in world.vehicles:
             if other is agent: continue
             other_pos.append(get_pos(other,agent))
-
-
-        if  self.add_direction_encoder:
-            return np.concatenate([agent.data_slot['direction_encoder']] + agent_pos + landmark_pos + obstacle_pos + other_pos + [in_view])
-        else:
+        
+        
+        if  self.add_direction_encoder == 'train':
+            return np.concatenate([agent.data_slot['direction_code']] + agent_pos + landmark_pos + obstacle_pos + other_pos + [in_view])
+        elif self.add_direction_encoder == 'keyboard':
+            key_direction = world.data_slot['key_direction']
+            #print(key_direction)
+            one_hot_direction = world.data_slot['direction_decoder'][key_direction]
+            return np.concatenate([[one_hot_direction] +  agent_pos + landmark_pos + obstacle_pos + other_pos + [in_view]])
+        elif self.add_direction_encoder == 'disable':
             return np.concatenate(agent_pos + landmark_pos + obstacle_pos + other_pos)
 
 

@@ -1,9 +1,12 @@
-from typing import Callable, List
+from typing import Any, Callable, Dict, List, Optional
+from pynput import keyboard
+import threading
 import gym
 from gym import spaces
 import numpy as np
 from .basic import World
-
+T_Policy = List[Callable[[np.ndarray],int]]
+T_action = List[int]
 # environment for all vehicles in the multi-vehicle world
 # currently code assumes that no vehicles will be created/destroyed at runtime!
 class MultiVehicleEnv(gym.Env):
@@ -43,51 +46,8 @@ class MultiVehicleEnv(gym.Env):
             else:
                 obs_dim = len(self.observation_callback(vehicle, self.world))
             self.observation_space.append(spaces.Box(low=-np.inf, high=+np.inf, shape=(obs_dim,), dtype=np.float32))
-    # set env action for a particular vehicles
-    def _set_action(self, action, vehicle):
-        assert isinstance(action,int)
-        [ctrl_vel_b,ctrl_phi] = vehicle.discrete_table[action]
-        vehicle.state.ctrl_vel_b = ctrl_vel_b
-        vehicle.state.ctrl_phi = ctrl_phi
-
-    def step(self, action_n):
-        obs_n = []
-        reward_n = []
-        done_n = []
-        info_n = {'n': []}
-        self.vehicles = self.world.vehicles
-        # set action for each vehicles
-        for i, vehicle in enumerate(self.vehicles):
-            self._set_action(action_n[i], vehicle)
-        # advance world state
-        self.world.step()
-        # record observation for each vehicles
-        for vehicle in self.vehicles:
-            obs_n.append(self._get_obs(vehicle))
-            reward_n.append(self._get_reward(vehicle))
-            done_n.append(self._get_done(vehicle))
-
-            info_n['n'].append(self._get_info(vehicle))
-
-        # all vehicles get total reward in cooperative case
-        reward = np.sum(reward_n)
-        if self.shared_reward:
-            reward_n = [reward] * self.vehicles_number
-        self.world.dumpGUI()
-        return obs_n, reward_n, done_n, info_n
-
-    def reset(self):
-        # reset world
-        self.reset_callback(self.world)
-        self.world.total_time = 0.0
-        # reset renderer
-        # record observations for each vehicles
-        obs_n = []
-        self.vehicles = self.world.vehicles
-        for vehicles in self.vehicles:
-            obs_n.append(self._get_obs(vehicles))
-        self.world.dumpGUI()
-        return obs_n
+        
+        self.policy_list:Optional[List[T_Policy]] = None
 
     # get info used for benchmarking
     def _get_info(self, vehicles):
@@ -114,3 +74,88 @@ class MultiVehicleEnv(gym.Env):
             return 0.0
         return self.reward_callback(vehicles, self.world)
 
+    def step(self, action_n:T_action):
+        obs_n:List[np.ndarray] = []
+        reward_n:List[float] = []
+        done_n:List[bool] = []
+        info_n:Dict[str,Any] = {'n': []}
+        self.vehicles = self.world.vehicles
+        # set action for each vehicles
+        for i, vehicle in enumerate(self.vehicles):
+            assert isinstance(action_n[i],int)
+            [ctrl_vel_b,ctrl_phi] = vehicle.discrete_table[action_n[i]]
+            vehicle.state.ctrl_vel_b = ctrl_vel_b
+            vehicle.state.ctrl_phi = ctrl_phi
+        # advance world state
+        self.world.step()
+        # record observation for each vehicles
+        for vehicle in self.vehicles:
+            obs_n.append(self._get_obs(vehicle))
+            reward_n.append(self._get_reward(vehicle))
+            done_n.append(self._get_done(vehicle))
+
+            info_n['n'].append(self._get_info(vehicle))
+
+        # all vehicles get total reward in cooperative case
+        reward = np.sum(reward_n)
+        if self.shared_reward:
+            reward_n = [reward] * self.vehicles_number
+        return obs_n, reward_n, done_n, info_n
+
+    def reset(self):
+        # reset world
+        self.reset_callback(self.world)
+        self.world.total_time = 0.0
+        # record observations for each vehicles
+        obs_n = []
+        self.vehicles = self.world.vehicles
+        for vehicles in self.vehicles:
+            obs_n.append(self._get_obs(vehicles))
+        return obs_n
+    
+    def set_policy(self, policy_list:List[T_Policy]):
+        self.policy_list = policy_list
+    
+    def run_test(self):
+        n_obs = self.reset()
+        for step_idx in range(1000000):
+            n_action:T_action = []
+            for obs,policy in zip(n_obs,self.policy_list):
+                action = policy(obs)
+                n_action.append(action)
+            n_obs,reward,done,info = self.step(n_action)
+
+    def on_press(self,key):
+        if key == keyboard.Key.esc:
+            return False  # stop listener
+        try:
+            k = key.char  # single-char keys
+            print(k)
+            if k == 'e':
+                self.world.data_slot['key_direction'] = 0
+            if k == 'q':
+                self.world.data_slot['key_direction'] = 1
+            if k == 'z':
+                self.world.data_slot['key_direction'] = 2
+            if k == 'c':
+                self.world.data_slot['key_direction'] = 3
+        except:
+            k = key.name  # other keys
+
+
+    def main(self):
+        while True:
+            cmd = input('waiting for cmd: ')
+            print(cmd)
+            if cmd == 's':
+                t= threading.Thread(target=self.run_test)
+                t.setDaemon(True)
+                t.start()
+                print('start for keyboard ctrl')
+                listener = keyboard.Listener(on_press=self.on_press)
+                listener.start()
+                listener.join()
+            if cmd == 'x':
+                print("finished!")
+                break
+        
