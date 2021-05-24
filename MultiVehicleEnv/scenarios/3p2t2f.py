@@ -16,7 +16,7 @@ class Scenario(BaseScenario):
         world.field_range = [-2.4,-2.4,2.4,2.4]
 
         # define the task 
-        world.view_threshold = 1.0
+        world.data_slot['view_threshold'] = 1.0
 
         if args.usegui:
             world.GUI_port = args.guiport
@@ -69,7 +69,7 @@ class Scenario(BaseScenario):
             agent.state.ctrl_vel_b = 0
             agent.state.ctrl_phi = 0
             agent.state.movable = True
-            agent.state.collision = False
+            agent.state.crashed = False
 
         conflict = True
         while conflict:
@@ -132,11 +132,11 @@ class Scenario(BaseScenario):
         for agent in world.vehicles:
             direction = [real_landmark.state.coordinate[0] - agent.state.coordinate[0],
                          real_landmark.state.coordinate[1] - agent.state.coordinate[1]]
-            agent.direction_encoder = onehot[encode_direction(direction),:]
+            agent.data_slot['direction_encoder'] = onehot[encode_direction(direction),:]
                         
     def reward(self, agent:Vehicle, world:World):
                 # Adversaries are rewarded for collisions with agents
-        rew = 0
+        rew:float = 0.0
 
         # direction reward
         prefer_action = naive_inference(agent.state.coordinate[0],
@@ -158,7 +158,7 @@ class Scenario(BaseScenario):
             rew += 1.0
             
         # collision reward
-        if agent.state.collision:
+        if agent.state.crashed:
             rew -= 1.0
 
         return rew
@@ -194,7 +194,7 @@ class Scenario(BaseScenario):
         landmark_pos = []
         for landmark in world.landmarks:
             dist = coord_dist(agent.state.coordinate, landmark.state.coordinate)
-            if dist < world.view_threshold:
+            if dist < world.data_slot['view_threshold']:
                 in_view = 1.0
                 landmark_pos.append(get_pos(landmark, agent))
             else:
@@ -209,12 +209,12 @@ class Scenario(BaseScenario):
 
 
         if  self.add_direction_encoder:
-            return np.concatenate([agent.direction_encoder] + agent_pos + landmark_pos + obstacle_pos + other_pos + [in_view])
+            return np.concatenate([agent.data_slot['direction_encoder']] + agent_pos + landmark_pos + obstacle_pos + other_pos + [in_view])
         else:
             return np.concatenate(agent_pos + landmark_pos + obstacle_pos + other_pos)
 
 
 
     def info(self, agent:Vehicle, world:World):
-        agent_info = {}
+        agent_info:dict = {}
         return agent_info

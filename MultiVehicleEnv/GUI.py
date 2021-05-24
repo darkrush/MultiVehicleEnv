@@ -7,36 +7,32 @@ from . import rendering
 
 
 class GUI(object):
-    def __init__(self,dir = '/dev/shm/gui.data' , fps = 24):
+    def __init__(self,dir:str = '/dev/shm/gui_port' , fps:float = 24):
         self.field_range = None
         self.cam_bound = None
         self.viewer = None
         self.file_handle = None
 
-        self.file_name = dir
+        self.gui_port = dir
         self.fps = fps
-        self.lock = threading.Lock()
-    
-    def connect(self):
+
+        self.init_viewer()
+        self.init_object()
+
+    def _read_data(self):
         while(True):
-            if os.path.exists(self.file_name):
-                try:
-                    self.file_handle = open(self.file_name, "rb")
-                except IOError:
-                    print('open %s failed'%self.file_name)
-                    break
-                print('open %s successed'%self.file_name)
-                break
+            if os.path.exists(self.gui_port):
+                self.file_handle = open(self.gui_port, "rb")
+                self.file_handle.seek(0)
+                gui_data = pickle.load(self.file_handle)
+                self.file_handle.close
+                return gui_data
             else:
+                print('%s does not exist, wait for Simulator dump GUI data'%self.gui_port)
                 time.sleep(1)
-                print('%s does not exist, wait for Simulator dump GUI data'%self.file_name)
 
     def init_viewer(self):
-        assert self.file_handle is not None
-        self.file_handle = open(self.file_name, "rb")
-        self.file_handle.seek(0)
-        gui_data = pickle.load(self.file_handle)
-        self.file_handle.close
+        gui_data = self._read_data()
         self.field_range = gui_data['field_range']
         if self.cam_bound is None:
             center_x = (self.field_range[0]+self.field_range[2])/2.0
@@ -66,13 +62,8 @@ class GUI(object):
     
     def init_object(self):
         self.viewer.geoms = []
-
-        #self.file_handle.seek(0)
-        #gui_data = pickle.load(self.file_handle)
-        self.file_handle = open(self.file_name, "rb")
-        self.file_handle.seek(0)
-        gui_data = pickle.load(self.file_handle)
-        self.file_handle.close()
+        gui_data = self._read_data()
+        
         self.vehicles = gui_data['vehicles']
         self.landmarks = gui_data['landmarks']
         self.obstacles = gui_data['obstacles']
@@ -144,14 +135,8 @@ class GUI(object):
             self.viewer.add_geom(vehicle_geom['back_line'][0])
 
     def _render(self):
-        self.init_viewer()
-        self.init_object()
         while True:
-            self.lock.acquire()
-            self.file_handle = open(self.file_name, "rb")
-            self.file_handle.seek(0)
-            gui_data = pickle.load(self.file_handle)
-            self.file_handle.close
+            gui_data = self._read_data()
             self.vehicles = gui_data['vehicles']
             self.landmarks = gui_data['landmarks']
             self.obstacles = gui_data['obstacles']
@@ -169,7 +154,6 @@ class GUI(object):
                 self.init_viewer()
                 self.init_object()
             self.viewer.render(time = '%.1f'%(self.total_time),return_rgb_array = mode=='rgb_array')
-            self.lock.release()
             time.sleep(1.0/self.fps)
     
     def spin(self):

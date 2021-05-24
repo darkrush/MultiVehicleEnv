@@ -1,13 +1,19 @@
+from typing import Callable, List
 import gym
 from gym import spaces
 import numpy as np
+from .basic import World
 
 # environment for all vehicles in the multi-vehicle world
 # currently code assumes that no vehicles will be created/destroyed at runtime!
 class MultiVehicleEnv(gym.Env):
-    def __init__(self, world, reset_callback=None, reward_callback=None,
-                 observation_callback=None, info_callback=None,
-                 done_callback=None, shared_reward = False):
+    def __init__(self, world:World,
+                 reset_callback:Callable=None,
+                 reward_callback:Callable=None,
+                 observation_callback:Callable=None,
+                 info_callback:Callable=None,
+                 done_callback:Callable=None,
+                 shared_reward:bool = False):
 
         self.world = world
         self.vehicles = self.world.vehicles
@@ -22,17 +28,20 @@ class MultiVehicleEnv(gym.Env):
         self.info_callback = info_callback
         self.done_callback = done_callback
 
-        self.total_time = 0.0
+        self.total_time:float = 0.0
 
         # action spaces
-        self.action_space = []
+        self.action_space:List[spaces.Discrete] = []
         for vehicle in self.vehicles:
             self.action_space.append(spaces.Discrete(len(vehicle.discrete_table)))
 
         # observation space
         self.observation_space = []
         for vehicle in self.vehicles:
-            obs_dim = len(observation_callback(vehicle, self.world))
+            if self.observation_callback is None:
+                obs_dim = 0
+            else:
+                obs_dim = len(self.observation_callback(vehicle, self.world))
             self.observation_space.append(spaces.Box(low=-np.inf, high=+np.inf, shape=(obs_dim,), dtype=np.float32))
     # set env action for a particular vehicles
     def _set_action(self, action, vehicle):

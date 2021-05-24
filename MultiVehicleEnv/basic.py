@@ -1,4 +1,4 @@
-#from .euclid import Point2
+from typing import *
 import numpy as np
 import pickle
 import time
@@ -7,60 +7,79 @@ import time
 class VehicleState(object):
     def __init__(self):
         # center point position in x,y axis
-        self.coordinate = [0.0,0.0]
+        self.coordinate:List[float]= [0.0,0.0]
         # direction of car axis
-        self.theta = 0
+        self.theta:float = 0.0
         # linear velocity of back point
-        self.vel_b = 0
+        self.vel_b:float = 0.0
         # deflection angle of front wheel
-        self.phi = 0
+        self.phi:float = 0.0
         # Control signal of linear velocity of back point
-        self.ctrl_vel_b = 0
+        self.ctrl_vel_b:float = 0.0
         # Control signal of deflection angle of front wheel
-        self.ctrl_phi = 0
+        self.ctrl_phi:float = 0.0
         # cannot move if movable is False. Default is True and be setted as False when crashed.
-        self.movable = True
-        self.collision = False
+        self.movable:bool = True
+        # Default is False and be setted as True when crashed into other collideable object.
+        self.crashed:bool = False
 
 class Vehicle(object):
     def __init__(self):
-        self.r_safe     = 0.24
-        self.L_car      = 0.30  # length of the car
-        self.W_car      = 0.20  # width of the car
-        self.L_axis     = 0.20 # distance between front and back wheel
-        self.K_vel      = 0.18266    # coefficient of back whell velocity control
-        self.K_phi      = 0.298   # coefficient of front wheel deflection control
-        self.dv_dt      = 2.0
-        self.dphi_dt    = 3.0
-        self.color      = [0.0,0.0,0.0]
-        self.discrete_table = {0:( 0.0, 0.0),
+        # safe radius of the vehicle
+        self.r_safe:float = 0.24
+        # length of the vehicle
+        self.L_car:float = 0.30
+        # width of the vehicle
+        self.W_car:float = 0.20
+        # distance between front and back wheel
+        self.L_axis:float = 0.20
+        # coefficient of back whell velocity control
+        self.K_vel:float = 0.18266
+        # coefficient of front wheel deflection control
+        self.K_phi:float = 0.298
+        # the acceleration of the back whell velocity
+        self.dv_dt:float = 2.0
+        # the angular acceleration of the back whell velocity
+        self.dphi_dt:float = 3.0
+        # the color of the vehicle
+        self.color:List[float] = [0.0,0.0,0.0]
+        # the discrete action table of the vehicle, action_code -> (ctrl_vel,ctrl_phi) 
+        self.discrete_table:Dict[int,Tuple[float,float]] = {0:( 0.0, 0.0),
                                1:( 1.0, 0.0), 2:( 1.0, 1.0), 3:( 1.0, -1.0),
                                4:(-1.0, 0.0), 5:(-1.0, 1.0), 6:(-1.0, -1.0)}
-        self.state      = VehicleState()
+        self.data_slot:Dict[str,Any]= {}
+        # the state of the vehicle
+        self.state:VehicleState = VehicleState()
 
 class EntityState(object):
-    def __init__(self, x=0.0, y=0.0):
-        self.coordinate = [x,y]
+    def __init__(self):
+        # center point position in x,y axis
+        self.coordinate:List[float] = [0.0,0.0]
 
 class Entity(object):
-    def __init__(self,radius=1.0):
-        self.radius = radius
-        self.collideable = False
-        self.color      = [0.0,0.0,0.0]
-        self.state = EntityState()
+    def __init__(self):
+        # the redius of the entity
+        self.radius:float = 1.0
+        # true if the entity can crash into other collideable object
+        self.collideable:bool = False
+        # the color of the entoty
+        self.color:List[float] = [0.0,0.0,0.0]
+        # the state of the entity
+        self.state:EntityState = EntityState()
 
 # multi-vehicle world
 class World(object):
     def __init__(self):
         # list of vehicles and entities (can change at execution-time!)
-        self.vehicles = []
-        self.landmarks = []
-        self.obstacles = []
-        self.field_range = [-1.0,-1.0,1.0,1.0]
-        self.GUI_port = '/dev/shm/gui.data'
-        self.GUI_file = None
-        self.sim_state = 'init'
-        self.real_landmark = 0
+        self.vehicles:List[Vehicle] = []
+        self.landmarks:List[Entity] = []
+        self.obstacles:List[Entity] = []
+        #range of the main field
+        self.field_range:List[float] = [-1.0,-1.0,1.0,1.0]
+        self.GUI_port:str = '/dev/shm/gui_port'
+        self.GUI_file:Union[BinaryIO,None] = None
+        self.sim_state:str = 'init'
+        self.real_landmark:int = 0
         
 
         # simulation timestep
@@ -68,6 +87,9 @@ class World(object):
         self.sim_step = 1000
         self.sim_t = self.step_t/self.sim_step
         self.total_time = 0.0
+
+        # the data slot for additional data defined in scenario
+        self.data_slot:Dict[str,Any] = {}
 
     # return all entities in the world
     @property
@@ -102,7 +124,7 @@ class World(object):
 
     def _check_collision(self):
         for idx_a, vehicle_a in enumerate(self.vehicles):
-            if vehicle_a.state.collision :
+            if vehicle_a.state.crashed :
                 continue
             for idx_b, vehicle_b in enumerate(self.vehicles):
                 if idx_a == idx_b:

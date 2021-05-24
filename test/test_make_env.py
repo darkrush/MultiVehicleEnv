@@ -19,7 +19,7 @@ def make_env(scenario_name, args):
     return env
 
 parser = argparse.ArgumentParser(description="GUI for Multi-VehicleEnv")
-parser.add_argument('--guiport',type=str,default='/dev/shm/gui.data')
+parser.add_argument('--guiport',type=str,default='/dev/shm/gui_port')
 parser.add_argument('--usegui', action='store_true', default=False)
 parser.add_argument('--step-t',type=float,default=1.0)
 parser.add_argument('--sim-step',type=int,default=100)
