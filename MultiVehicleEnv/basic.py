@@ -74,35 +74,57 @@ class World(object):
         self.vehicles:List[Vehicle] = []
         self.landmarks:List[Entity] = []
         self.obstacles:List[Entity] = []
-        #range of the main field
+        # range of the main field
         self.field_range:List[float] = [-1.0,-1.0,1.0,1.0]
+        # GUI port for GUI display, by a file in shared memory
         self.GUI_port:str = '/dev/shm/gui_port'
+        # File handle for GUI
         self.GUI_file:Union[BinaryIO,None] = None
+        # Sim state for flow control not used yet
         self.sim_state:str = 'init'
+        # real_landmark for ZoeYC's work. TODO move to data_slot
         self.real_landmark:int = 0
-        
+        # real-world time duration for one MDP step
+        self.step_t:float = 1.0
 
-        # simulation timestep
-        self.step_t = 1.0
-        self.sim_step = 1000
-        self.sim_t = self.step_t/self.sim_step
-        self.total_time = 0.0
+        # split the step_t into sim_step pieces state simulation
+        self.sim_step:int = 1000
+        # record total real-world time past by
+        self.total_time:float = 0.0
 
         # the data slot for additional data defined in scenario
         self.data_slot:Dict[str,Any] = {}
-
-    # return all entities in the world
+    
+    # real-world time duration for one state simulation step
     @property
-    def field_center(self):
-        return ((self.field_range[0] + self.field_range[2])/2, (self.field_range[1] + self.field_range[3])/2)
-
+    def sim_t(self)->float:
+        return self.step_t/self.sim_step
+    
+    # coordinate of the main field center
     @property
-    def field_half_size(self):
-        return ((self.field_range[2] - self.field_range[0])/2, (self.field_range[3] - self.field_range[1])/2)
+    def field_center(self)->Tuple[float,float]:
+        center_x = (self.field_range[0] + self.field_range[2])/2
+        center_y = (self.field_range[1] + self.field_range[3])/2 
+        return (center_x, center_y)
 
+    # width and height of the main field center
     @property
-    def entities(self):
-        return self.vehicles + self.landmarks + self.obstacles
+    def field_half_size(self)->Tuple[float,float]:
+        width = (self.field_range[2] - self.field_range[0])/2
+        height = (self.field_range[3] - self.field_range[1])/2
+        return (width, height)
+
+    # return all entities in the world. May not be used because Vehicle and Entit have no common parent class
+    @property
+    def entities(self)->List[Union[Vehicle,Entity]]:
+        result_list:List[Union[Vehicle,Entity]] = []
+        for vehicle in self.vehicles:
+            result_list.append(vehicle)
+        for landmark in self.landmarks:
+            result_list.append(landmark)
+        for obstacle in self.obstacles:
+            result_list.append(obstacle)
+        return result_list
 
     # return all vehicles controllable by external policies
     @property
@@ -113,19 +135,23 @@ class World(object):
     @property
     def scripted_vehicles(self):
         raise NotImplementedError()
-
-    def _integrate_state(self):
+    
+    # update the physical state for one sim_step.
+    def _update_one_sim_step(self):
         for vehicle in self.vehicles:
             state = vehicle.state
+            # if the vehicle is not movable, skip update its physical state
             if state.movable:
-            #new_state_data = integrate_state_wrap(state, vehicle.L_axis, self.sim_t)
-                new_state_data = integrate_state_wrap(state, vehicle, self.sim_t)
+                new_state_data = _update_one_sim_step_warp(state, vehicle, self.sim_t)
                 state.coordinate[0], state.coordinate[1], state.theta = new_state_data
 
+    # check collision state for each vehicle
     def _check_collision(self):
         for idx_a, vehicle_a in enumerate(self.vehicles):
             if vehicle_a.state.crashed :
                 continue
+
+            # check if the agent_a crashed into other agent_b
             for idx_b, vehicle_b in enumerate(self.vehicles):
                 if idx_a == idx_b:
                     continue
@@ -136,6 +162,7 @@ class World(object):
                     vehicle_a.state.movable = False
                     break
 
+            # check if the agent_a crashed into a obstacle
             for obstacle in self.obstacles:
                 dist = ((vehicle_a.state.coordinate[0]-obstacle.state.coordinate[0])**2
                       +(vehicle_a.state.coordinate[1]-obstacle.state.coordinate[1])**2)**0.5
@@ -144,6 +171,7 @@ class World(object):
                     vehicle_a.state.movable = False
                     break
     
+    # pickle the GUI data and dump to the sheard memory file
     def dumpGUI(self):
         if self.GUI_port is not None and self.GUI_file is None:
             try:
@@ -164,32 +192,32 @@ class World(object):
     def step(self):
         if self.GUI_port is not None:
             for idx in range(self.sim_step):
-                time.sleep(self.sim_t)
                 self.total_time += self.sim_t
-                self._integrate_state()
+                self._update_one_sim_step()
                 self._check_collision()
+                # if use GUI, slow down the simulation speed
+                time.sleep(self.sim_t)
                 self.dumpGUI()
         else:
             for idx in range(self.sim_step):
                 self.total_time += self.sim_t
-                self._integrate_state()
+                self._update_one_sim_step()
                 self._check_collision()
 
-def linear_update(x,dx_dt,dt,target):
-    if x < target:
-        return min(x + dx_dt*dt, target)
-    elif x > target:
-        return max(x - dx_dt*dt, target)
-    return x
-
-
-def integrate_state_wrap(state:VehicleState, vehicle:Vehicle, dt:float):
+# warp one sim step into a function with pure math calculation
+def _update_one_sim_step_warp(state:VehicleState, vehicle:Vehicle, dt:float):
+    def linear_update(x:float, dx_dt:float, dt:float, target:float)->float:
+        if x < target:
+            return min(x + dx_dt*dt, target)
+        elif x > target:
+            return max(x - dx_dt*dt, target)
+        return x
     target_vel_b = state.ctrl_vel_b * vehicle.K_vel
     state.vel_b = linear_update(state.vel_b, vehicle.dv_dt, dt, target_vel_b) 
     target_phi = state.ctrl_phi * vehicle.K_phi
     state.phi = linear_update(state.phi, vehicle.dphi_dt, dt, target_phi) 
     
-    update_data = integrate_state_njit(state.phi,
+    update_data = _update_one_sim_step_njit(state.phi,
                                        state.vel_b,
                                        state.theta,
                                        vehicle.L_axis,
@@ -198,8 +226,11 @@ def integrate_state_wrap(state:VehicleState, vehicle:Vehicle, dt:float):
                                        dt)
     return update_data
 
-
-def integrate_state_njit(_phi,_vb,_theta,_L,_x,_y,dt):
+# core math calculation part for speed up by numba
+# if want to speed up, please uncomment the followed code
+#from numba import njit
+#@njit
+def _update_one_sim_step_njit(_phi:float, _vb:float, _theta:float, _L:float, _x:float, _y:float, dt:float)->Tuple[float,float,float]:
     sth = np.sin(_theta)
     cth = np.cos(_theta)
     _xb = _x - cth*_L/2.0
