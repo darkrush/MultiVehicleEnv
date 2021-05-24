@@ -83,7 +83,7 @@ class Viewer(object):
     def add_onetime(self, geom):
         self.onetime_geoms.append(geom)
 
-    def render(self,time = '0', return_rgb_array=False):
+    def render(self,time = '0',info = '', return_rgb_array=False):
         glClearColor(1,1,1,1)
         self.window.clear()
         self.window.switch_to()
@@ -96,14 +96,25 @@ class Viewer(object):
         for geom in self.onetime_geoms:
             geom.render()
         self.transform.disable()
-        label = pyglet.text.Label(time,
+        time_label = pyglet.text.Label(time,
                                 font_name='Times New Roman',
                                 font_size=20,
                                 color=(0,0,0,255),
                                 x=self.window.width//20,
                                 y=self.window.height//20,
                                 anchor_x='left', anchor_y='baseline')
-        label.draw()
+                                
+        time_label.draw()
+
+        info_label = pyglet.text.Label(info,
+                                font_name='Times New Roman',
+                                font_size=20,
+                                color=(0,0,0,255),
+                                x=self.window.width//20,
+                                y=self.window.height//20*19,
+                                anchor_x='left', anchor_y='baseline')
+        info_label.draw()
+
         arr = None
         if return_rgb_array:
             buffer = pyglet.image.get_buffer_manager().get_color_buffer()

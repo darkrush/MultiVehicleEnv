@@ -183,7 +183,8 @@ class World(object):
                         'total_time':self.total_time,
                         'vehicles':self.vehicles,
                         'landmarks':self.landmarks,
-                        'obstacles':self.obstacles}
+                        'obstacles':self.obstacles,
+                        'info':self.data_slot['key_direction']}
             self.GUI_file.seek(0)
             pickle.dump(GUI_data,self.GUI_file)
             self.GUI_file.flush()

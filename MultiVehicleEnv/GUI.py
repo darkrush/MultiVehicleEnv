@@ -16,8 +16,6 @@ class GUI(object):
         self.gui_port = dir
         self.fps = fps
 
-        self.init_viewer()
-        self.init_object()
 
     def _read_data(self):
         while(True):
@@ -135,12 +133,16 @@ class GUI(object):
             self.viewer.add_geom(vehicle_geom['back_line'][0])
 
     def _render(self):
+        self.init_viewer()
+        self.init_object()
+
         while True:
             gui_data = self._read_data()
             self.vehicles = gui_data['vehicles']
             self.landmarks = gui_data['landmarks']
             self.obstacles = gui_data['obstacles']
             self.total_time = gui_data['total_time']
+            self.info = str(gui_data['info'])
             for obstacle, obstacle_geom in zip(self.obstacles, self.obstacle_geom_list):
                 obstacle_geom['total_xform'].set_translation(obstacle.state.coordinate[0],obstacle.state.coordinate[1])
             for landmark, landmark_geom in zip(self.landmarks, self.landmark_geom_list):
@@ -153,14 +155,11 @@ class GUI(object):
             if self.viewer.closed:
                 self.init_viewer()
                 self.init_object()
-            self.viewer.render(time = '%.1f'%(self.total_time),return_rgb_array = mode=='rgb_array')
+            self.viewer.render(time = '%.1f'%(self.total_time),info = self.info,return_rgb_array = mode=='rgb_array')
             time.sleep(1.0/self.fps)
     
     def spin(self):
         t= threading.Thread(target=self._render)
         t.setDaemon(True)
         t.start()
-        while True:
-           cmd = input('waiting for cmd: ')
-           if cmd == 'exit':
-               exit()
+        #t.join()

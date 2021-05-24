@@ -19,7 +19,7 @@ class Scenario(BaseScenario):
         world.data_slot['view_threshold'] = 1.0
 
         if args.usegui:
-            world.GUI_port = args.guiport
+            world.GUI_port = args.gui_port
         else:
             world.GUI_port = None
 
@@ -213,7 +213,6 @@ class Scenario(BaseScenario):
             return np.concatenate([agent.data_slot['direction_code']] + agent_pos + landmark_pos + obstacle_pos + other_pos + [in_view])
         elif self.add_direction_encoder == 'keyboard':
             key_direction = world.data_slot['key_direction']
-            #print(key_direction)
             one_hot_direction = world.data_slot['direction_decoder'][key_direction]
             return np.concatenate([[one_hot_direction] +  agent_pos + landmark_pos + obstacle_pos + other_pos + [in_view]])
         elif self.add_direction_encoder == 'disable':
